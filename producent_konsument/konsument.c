@@ -94,21 +94,21 @@ void split_data(char* adress_raw,char** adress_final, int* port) //funcja parsuj
 
 int main(int argc, char* argv[])
 {
-  float p=0;
+  float p=0; //zmienne flag
   float d=0;
   int c=0;
 
-  int subst_p=0;
+  int subst_p=0; //zmienne, które definiują, czy flaga wystąpiła
   int subst_d=0;
   int subst_c=0;
 
-  int port=0;
-  char* adress_raw = (char*)malloc(sizeof(char)*20);
-  char* adress_final = (char*)malloc(sizeof(char)*16);
+  int port=0; //nr portu
+  char* adress_raw = (char*)malloc(sizeof(char)*20); //adres wyjściowy, roboczy
+  char* adress_final = (char*)malloc(sizeof(char)*16); //adres finalny
 
   check_count_args(&argc); //sprawdzenie liczby argumentów
   get_args(&argc, &argv, &p, &c, &d, &subst_p, &subst_c, &subst_d, &port, &adress_raw);
-  check_flags(subst_p, subst_c, subst_d); //sprawdzenie, czy użytkownik podał flagę -f
+  check_flags(subst_p, subst_c, subst_d); //sprawdzenie, czy użytkownik podał flagi -f
   split_data(adress_raw, &adress_final, &port); //podział danych z argumentu pozycyjnego, sprawdzenie czy użytkownik podał IP:port, czy port. Dopasowanie danych do zmiennych
 
 

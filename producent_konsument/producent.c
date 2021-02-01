@@ -3,6 +3,7 @@
 #include <stdlib.h>
 #include <fcntl.h>
 #include <string.h>
+#include <time.h>
 
 void get_args(int* argc, char** argv[], float *p, int *subst_p, int *port, char** adress_raw) //procedura pobierająca argumenty
 {
@@ -71,10 +72,21 @@ void split_data(char* adress_raw,char** adress_final, int* port) //funcja parsuj
 		*adress_final=strtok(adress_raw,":");
 		*port=strtol(strtok(NULL,":"),NULL,10);
 	}
-
 }
 
+void one_block_production(char** buffer, char c)
+{
+	for (int i=0; i<640; i++)
+	{
+		(*buffer)[i]=c;
+	}
+}
 
+int calc_count_of_block(float p)
+{
+	int sum_bytes=2662*p;
+	return (sum_bytes/640);
+}
 
 
 //-------------------
@@ -86,13 +98,42 @@ int main(int argc, char* argv[])
 	int port=0;
 	char* adress_raw = (char*)malloc(sizeof(char)*20);
 	char* adress_final = (char*)malloc(sizeof(char)*16);
+	char* buffer_prod = (char*)malloc(sizeof(char)*640);
+	struct timespec t={1,0};
+
+
+
 
 	check_count_args(&argc); //sprawdzenie liczby argumentów
 	get_args(&argc, &argv, &p, &subst_p, &port, &adress_raw); //pobranie argumentów
 	check_p_flag(subst_p); //sprawdzenie, czy użytkownik podał flagę -f
-	split_data(adress_raw, &adress_final, &port);
-	printf("Adres_final:%s, port:%d\n",adress_final, port);
+	split_data(adress_raw, &adress_final, &port); //podział danych z argumentu pozycyjnego, sprawdzenie czy użytkownik podał IP:port, czy port. Dopasowanie danych do zmiennych
 
+
+	int code_char=97;
+	while (1)
+	{
+
+//produkcja danych (bajtów)
+		for (int i=1;i<=calc_count_of_block(p);i++)
+		{
+			if (code_char==123)
+			{
+				code_char=65;
+			}
+			if (code_char == 91)
+			{
+				code_char=97;
+			}
+
+
+			one_block_production(&buffer_prod, code_char);
+			printf("%s\n", buffer_prod);
+			code_char++;
+		}
+		nanosleep(&t,NULL); //sekunda przerwy
+		//printf("Adres_final:%s, port:%d\n",adress_final, port);
+	}
 
 	return 0;
 }
