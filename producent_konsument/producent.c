@@ -5,6 +5,8 @@
 #include <string.h>
 #include <time.h>
 #include <errno.h>
+#include <sys/socket.h>
+#include <arpa/inet.h>
 
 void get_args(int* argc, char** argv[], float *p, int *subst_p, int *port, char** adress_raw) //procedura pobierająca argumenty
 {
@@ -98,6 +100,45 @@ void check_port (int port)
 	}
 }
 
+void rejestracja( int sockfd, char * Host, in_port_t Port )
+{
+	// struktura przechowująca adres w formacie dla domeny INET
+	struct sockaddr_in A;
+
+	A.sin_family = AF_INET;
+	A.sin_port = htons(Port);
+	// odradzane:
+	A.sin_addr.s_addr = inet_addr(Host);
+	// bezpieczniej:
+	int R = inet_aton(Host,&A.sin_addr);
+	if( ! R ) {
+		fprintf(stderr,"niepoprawny adres: %s\n",Host);
+		exit(1);
+	}
+
+	// ostatecznie, wywołanie funkcji
+	if( bind(sockfd,(struct sockaddr *)&A,sizeof(A)) )
+	{
+		perror("bind sie zepsul\n");
+		exit(1);
+	}
+}
+
+int polaczenie( int sockfd )
+{
+    struct sockaddr_in peer;
+    socklen_t addr_len = sizeof(peer);
+
+    int new_socket = accept(sockfd,(struct sockaddr *)&peer,&addr_len);
+    if( new_socket == -1 ) {
+        perror("");
+    } else {
+        fprintf(stderr,"nawiązane połączenie z klientem %s (port %d)\n",
+                inet_ntoa(peer.sin_addr),ntohs(peer.sin_port));
+    }
+    return new_socket;
+}
+
 //-------------------
 
 int main(int argc, char* argv[])
@@ -146,6 +187,34 @@ int main(int argc, char* argv[])
 				perror("close");
 				_exit(EXIT_FAILURE);
 			}
+			int sock_fd = socket(AF_INET,SOCK_STREAM,0);
+			if( sock_fd == -1 )
+			{
+				perror("");
+				exit(1);
+			}
+			rejestracja(sock_fd,"127.0.0.1",12345);
+			//rejestracja(sock_fd,adress_final,port);
+			if( listen(sock_fd,5) )
+			{
+				perror("zmiana trybu na pasywny sie zepsula");
+				exit(1);
+			}
+
+			int new_socket;
+	     int proba = 11;
+	     while( --proba ) {
+	         if( (new_socket = polaczenie(sock_fd)) != -1 ) break;
+	     }
+	     if( ! proba ) {
+	         fprintf(stderr,"nie udało się zaakceptować połączenia\n");
+	         exit(2);
+	     }
+
+			 //char* tmp="dupadupadupa";
+			// write(new_socket, tmp, 13);
+
+			close(sock_fd);
 
 			while (1)
 			{
@@ -155,7 +224,8 @@ int main(int argc, char* argv[])
 					{
 						printf("%s\n", strerror(errno));
 					}
-					printf("%s\n", buffer_tmp);
+					//printf("%s\n", buffer_tmp);
+					write(new_socket, buffer_tmp, strlen(buffer_tmp));
 				}
 				nanosleep(&t, NULL);
 			}
@@ -189,7 +259,7 @@ int main(int argc, char* argv[])
 					{
 						printf ("%d\n",errno);
 					}
-					//		printf("%s\n", buffer_prod);					
+					//		printf("%s\n", buffer_prod);
 				}
 				nanosleep(&t,NULL); //sekunda przerwy
 				//	printf("Adres_final:%s, port:%d\n",adress_final, port);

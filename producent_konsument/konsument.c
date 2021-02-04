@@ -5,6 +5,8 @@
 #include <string.h>
 #include <time.h>
 #include <signal.h>
+#include <sys/socket.h>
+#include <arpa/inet.h>
 
 
 #define TIMER_SIG SIGHUP
@@ -128,8 +130,9 @@ void degradation_data(int* free, int* used, int degradation_tempo, int capacity)
 static void handler(int signal)
 {
   flag=1;
-//  printf("dupa\n");
+  //  printf("dupa\n");
 }
+
 
 //----------------------------
 
@@ -211,6 +214,48 @@ if (timer_settime(timerid, 0, &trigger, NULL))
   perror("timer");
   return -12;
 }
+
+int sock_fd = socket(AF_INET,SOCK_STREAM,0);
+if( sock_fd == -1 )
+{
+  perror("socket sie zepsul...\n");
+  exit(1);
+}
+//----------------
+struct sockaddr_in A;
+short Port = 12345;
+
+A.sin_family = AF_INET;
+A.sin_port = htons(Port);
+// bezpieczniej:
+const char * Host = "127.0.0.1";
+int R = inet_aton(Host,&A.sin_addr);
+if( ! R ) {
+    fprintf(stderr,"niepoprawny adres: %s\n",Host);
+    exit(1);
+}
+
+// 4. oczekiwanie na połączenie/akceptacja połączenia
+//    (powstaje nowe gniazdo)
+int proba = 11;
+while( --proba ) {
+    if( connect(sock_fd,(struct sockaddr *)&A,sizeof(A)) != -1 ) break;
+}
+if( ! proba ) {
+    fprintf(stderr,"nie udało się zaakceptować połączenia\n");
+    exit(2);
+}
+fprintf(stderr,"nawiązane połączenie z serwerem %s (port %d)\n",
+    inet_ntoa(A.sin_addr),ntohs(A.sin_port));
+
+char tmp[1024];
+int dl;
+dl = recv(sock_fd,tmp, 4096 ,0);
+printf("dl: %d, buf: %s\n", dl,tmp);
+//----------------
+
+
+
 while (1)
 {
   if (flag==1)
