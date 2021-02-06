@@ -7,7 +7,6 @@
 #include <signal.h>
 #include <sys/socket.h>
 #include <arpa/inet.h>
-#include <errno.h>
 
 
 #define TIMER_SIG SIGHUP
@@ -216,12 +215,11 @@ if (timer_settime(timerid, 0, &trigger, NULL))
   return -12;
 }
 
-/*
 int sock_fd = socket(AF_INET,SOCK_STREAM,0);
 if( sock_fd == -1 )
 {
-perror("socket sie zepsul...\n");
-exit(1);
+  perror("socket sie zepsul...\n");
+  exit(1);
 }
 //----------------
 struct sockaddr_in A;
@@ -233,95 +231,34 @@ A.sin_port = htons(Port);
 const char * Host = "127.0.0.1";
 int R = inet_aton(Host,&A.sin_addr);
 if( ! R ) {
-fprintf(stderr,"niepoprawny adres: %s\n",Host);
-exit(1);
+    fprintf(stderr,"niepoprawny adres: %s\n",Host);
+    exit(1);
 }
 
 // 4. oczekiwanie na połączenie/akceptacja połączenia
 //    (powstaje nowe gniazdo)
-*/
-/*
 int proba = 11;
 while( --proba ) {
-if( connect(sock_fd,(struct sockaddr *)&A,sizeof(A)) != -1 ) break;
+    if( connect(sock_fd,(struct sockaddr *)&A,sizeof(A)) != -1 ) break;
 }
 if( ! proba ) {
-fprintf(stderr,"nie udało się zaakceptować połączenia\n");
-exit(2);
+    fprintf(stderr,"nie udało się zaakceptować połączenia\n");
+    exit(2);
 }
 fprintf(stderr,"nawiązane połączenie z serwerem %s (port %d)\n",
-inet_ntoa(A.sin_addr),ntohs(A.sin_port));
+    inet_ntoa(A.sin_addr),ntohs(A.sin_port));
 
-*/
-
+char tmp[1024];
 int dl;
 
 //----------------
 
-int conn=0;
-int sock_fd;
-struct sockaddr_in A;
-short Port = 12345;
-const char * Host = "127.0.0.1";
-int R;
+
 
 while (1)
 {
-
-  if (conn==0)
-  {
-    sock_fd = socket(AF_INET,SOCK_STREAM,0);
-    if( sock_fd == -1 )
-    {
-      perror("socket sie zepsul...\n");
-      exit(1);
-    }
-    //----------------
-
-
-    A.sin_family = AF_INET;
-    A.sin_port = htons(Port);
-    // bezpieczniej:
-
-    R = inet_aton(Host,&A.sin_addr);
-    if( ! R ) {
-      fprintf(stderr,"niepoprawny adres: %s\n",Host);
-      exit(1);
-    }
-
-    // 4. oczekiwanie na połączenie/akceptacja połączenia
-    //    (powstaje nowe gniazdo)
-
-
-    //  int proba = 11;
-    //  while( --proba )
-    //  {
-    if( connect(sock_fd,(struct sockaddr *)&A,sizeof(A)) != -1 )
-    {
-
-      conn=1;
-      fprintf(stderr,"nawiązane połączenie z serwerem %s (port %d)\n",
-      inet_ntoa(A.sin_addr),ntohs(A.sin_port));
-    //  printf("%d\n\n",conn);
-      //  break;
-    }
-    //  }
-    //  if( ! proba ) {
-    //    fprintf(stderr,"nie udało się zaakceptować połączenia\n");
-    //    exit(2);
-    //  }
-
-
-  }
-  char tmp[4096];
   dl = recv(sock_fd,tmp, 4096 ,0);
-  if (dl==-1)
-  {
-    //printf("%s\n", strerror(errno));
-    continue;
-  }
-  printf("dl: %d, %s\n", dl, tmp);
-  conn=0;
+  printf("dl: %d\n", dl);
   if (flag==1)
   {
     degradation_data(&free, &used, degradation_tempo, capacity);

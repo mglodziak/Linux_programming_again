@@ -197,7 +197,7 @@ int main(int argc, char* argv[])
 			int sock_fd = socket(AF_INET,SOCK_STREAM,0);
 			if( sock_fd == -1 )
 			{
-				perror("creating socket");
+				perror("");
 				exit(1);
 			}
 
@@ -283,17 +283,10 @@ int main(int argc, char* argv[])
 					{
 						printf("%s\n", strerror(errno));
 					}
-
-					//buffer_tmp[639]='\0';
-					if (write(new_socket, buffer_tmp, strlen(buffer_tmp))==-1)
-					{
-						perror("Write socket");
-						exit(EXIT_FAILURE);
-					}
 					printf("%s\n", buffer_tmp);
-
+					write(new_socket, buffer_tmp, strlen(buffer_tmp));
+				//	close(new_socket);
 				}
-				close(new_socket);
 				nanosleep(&t, NULL);
 			}
 			break;
