@@ -119,21 +119,33 @@ int set_capacity(int c)
   return c*30000;
 }
 
+//---------------
+
 int calc_used (int capacity, int free)
 {
   return capacity-free;
 }
+
+//---------------
 
 int calc_free (int capacity, int used)
 {
   return capacity-used;
 }
 
+//---------------
+
 int set_degradaion_tempo(float d)
 {
   return 819*d;
 }
 
+//---------------
+
+int set_consumption_tempo(float p)
+{
+  return 4435*p;
+}
 //---------------
 
 void degradation_data(int* free, int* used, int degradation_tempo, int capacity)
@@ -172,6 +184,7 @@ int main(int argc, char* argv[])
   int used=0; //ilość użytego miejsca magazynu
   int free=0; //ilość wolnego miejsca magazynu
   int degradation_tempo=0; //tempo degradacji
+  int consumpion_tempo=0; //tempo konsumpcji danych
 
   int port=0; //nr portu
   char* adress_raw = (char*)malloc(sizeof(char)*20); //adres wyjściowy, roboczy
@@ -194,6 +207,7 @@ int main(int argc, char* argv[])
   capacity=set_capacity(c); //ustawienie pojemności magazynu
   free=capacity;
   degradation_tempo=set_degradaion_tempo(d); //ustawienie tempa degradacji danych
+  consumpion_tempo=set_consumption_tempo(p);
 
   free=capacity-used;
 
@@ -221,7 +235,7 @@ int main(int argc, char* argv[])
     return -12;
   }
 
-  int ret; //wartość, którą zwróci recv
+  int ret=0; //wartość, którą zwróci recv
   int conn=0; //flaga określająca, czy mamy istniejące połączenie, czy trzeba nawiązać nowe
   int sock_fd; //file descriptor socketu
   struct sockaddr_in A;
@@ -235,6 +249,29 @@ int main(int argc, char* argv[])
     {
       WriteOnStdErr("Nie mam miejsca w magazynie, kończę działanie.");
       exit(0);
+    }
+
+    if (ret > 0) //degradacja danych i jednoczesne przetwarzanie
+    {
+      if (flag==1) //jeśli budzik wysłał sygnał - następuje degradacja i konsumpcja danych w tempie zadanym przez parametr
+      {
+        if (ret<consumpion_tempo)
+        {
+          used+=ret;
+          free-=ret;
+          ret=0;
+        }
+        else
+        {
+          used+=consumpion_tempo;
+          free-=consumpion_tempo;
+          ret-=consumpion_tempo;
+        }
+        degradation_data(&free, &used, degradation_tempo, capacity);
+        printf("free: %d\t used: %d\t capacity: %d\n", free, used, capacity);
+      }
+      flag=0;
+      continue;
     }
 
     if (conn==0) //jeśli trzeba pobrać paczkę danych - stworzyć połączenie

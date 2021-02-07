@@ -8,13 +8,14 @@
 #include <sys/socket.h>
 #include <arpa/inet.h>
 #include <sys/epoll.h>
+#include <sys/ioctl.h>
 
 
 #define MAX_CONN 100 //ilość maksymalnej ilości połączeń
 
 void WriteOnStdErr (char* text)
 {
-fprintf(stderr, "%s\n",text);
+	fprintf(stderr, "%s\n",text);
 }
 
 //---------------
@@ -278,6 +279,11 @@ int main(int argc, char* argv[])
 					}
 				}
 
+				int dupa;
+				ioctl(pipefd[0],FIONREAD,&dupa);
+				printf("dupa: %d\n",dupa);
+				WriteOnStdErr(strerror(errno));
+
 				if (read(pipefd[0], buffer_tmp, 3250)==-1) //wczytanie danych z pipe
 				{
 					WriteOnStdErr(strerror(errno));
@@ -288,10 +294,10 @@ int main(int argc, char* argv[])
 					perror("Write socket");
 					exit(EXIT_FAILURE);
 				}
-			//WriteOnStdErr("buffer_tmp");
+				//WriteOnStdErr("buffer_tmp");
 
 				close(new_socket); //zamknięcie socketu po wysłaniu danych
-			//	nanosleep(&t, NULL); // niepotrzebny
+				//	nanosleep(&t, NULL); // niepotrzebny
 			}
 			break;
 		}
