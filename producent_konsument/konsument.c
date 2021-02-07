@@ -167,6 +167,16 @@ static void handler(int signal)
 }
 
 //---------------
+
+void write_report_on_exit(char* adress_final, int port)
+{
+	struct timespec t1;
+	clock_gettime(CLOCK_REALTIME, &t1);
+  pid_t pid = getpid();
+	fprintf(stderr, "Time: %ld:%ld\tPID: %d\t Adress: %s\t Port: %d\t\n",t1.tv_sec, t1.tv_nsec, pid, adress_final, port);
+}
+
+//---------------
 //---------------
 //---------------
 
@@ -247,7 +257,8 @@ int main(int argc, char* argv[])
   {
     if (free<13000) //zabezpieczenie przed przepełnieniem magazynu
     {
-      WriteOnStdErr("Nie mam miejsca w magazynie, kończę działanie.");
+      //WriteOnStdErr("Nie mam miejsca w magazynie, kończę działanie.");
+      write_report_on_exit(adress_final, port);
       exit(0);
     }
 

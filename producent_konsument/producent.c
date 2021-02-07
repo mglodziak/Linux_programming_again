@@ -9,9 +9,13 @@
 #include <arpa/inet.h>
 #include <sys/epoll.h>
 #include <sys/ioctl.h>
+#include <signal.h>
 
-
+#define TIMER_SIG SIGUSR1
+#define CLOCK_ID CLOCK_REALTIME
 #define MAX_CONN 100 //ilość maksymalnej ilości połączeń
+
+int flag=0; //flaga potrzebna do budzika (degradacji danych)
 
 void WriteOnStdErr (char* text)
 {
@@ -20,7 +24,7 @@ void WriteOnStdErr (char* text)
 
 //---------------
 
-void get_args(int* argc, char** argv[], float *p, int *subst_p, int *port, char** adress_raw) //procedura pobierająca argumenty
+void get_args(int* argc, char** argv[], float *p, int *subst_p, char** adress_raw) //procedura pobierająca argumenty
 {
 	int opt;
 	while ((opt=getopt(*argc, *argv, "p:")) != -1)
@@ -65,7 +69,7 @@ void check_p_flag(int p) //procedura sprawdzająca, czy użytkownik użył flagi
 
 int isDigit(char* str) //funkcja sprawdzająca, czy podany przez użytkownika arg pozycyjny zawiera jedynie port, czy też adres (inne znaki niż liczby)
 {
-	for (int i=0;i<strlen(str)-1;i++)
+	for (int i=0;i<(int)strlen(str)-1;i++)
 	{
 		if (str[i] >=58 || str[i]<=47)
 		{
@@ -154,16 +158,26 @@ int polaczenie( int sockfd ) //stworzenie połączenia z socketem - zapożyczone
 
 	int new_socket = accept(sockfd,(struct sockaddr *)&peer,&addr_len);
 	if( new_socket == -1 ) {
-		perror("");
-	}
-	else
-	{
-		fprintf(stderr,"nawiązane połączenie z klientem %s (port %d)\n",
-		inet_ntoa(peer.sin_addr),ntohs(peer.sin_port));
+		perror("new socket");
 	}
 	return new_socket;
 }
 
+//---------------
+
+void write_report_after_disconnect(char* adress_final, int port, int wasted_bytes)
+{
+	struct timespec t1;
+	clock_gettime(CLOCK_REALTIME, &t1);
+	fprintf(stderr, "Time: %ld:%ld\tAdress: %s\t Port: %d\t Wasted bytes: %d\n",t1.tv_sec, t1.tv_nsec, adress_final, port, wasted_bytes );
+}
+
+//---------------
+
+static void handler()
+{
+	flag=1;
+}
 
 //---------------
 //---------------
@@ -184,10 +198,16 @@ int main(int argc, char* argv[])
 	int fd_epoll; //file descriptor używany przez epolla
 	int code_char=97; //ustawienie kodu ascii na 'a'
 	int pipefd[2]; //file descriptor dla pipa
+	int wasted_bytes=0; //ilość zmarnowanych bajtów.
 	pid_t child; //pid dziecka
+	int count_bytes_in_pipe=0; //ilość bajtów w pipie
+	int count_bytes_in_pipe_5s_ago=0; //ilość bajtów 5s temu
+	int count_connected_clients=0;
+	int max_bytes_in_magazine=65535;
+
 
 	check_count_args(&argc); //sprawdzenie liczby argumentów
-	get_args(&argc, &argv, &p, &subst_p, &port, &adress_raw); //pobranie argumentów
+	get_args(&argc, &argv, &p, &subst_p, &adress_raw); //pobranie argumentów
 	check_p_flag(subst_p); //sprawdzenie, czy użytkownik podał flagę -f
 	split_data(adress_raw, &adress_final, &port); //podział danych z argumentu pozycyjnego, sprawdzenie czy użytkownik podał IP:port, czy port. Dopasowanie danych do zmiennych
 	check_port(port); //sprawdzenie zakresów portu
@@ -208,7 +228,39 @@ int main(int argc, char* argv[])
 
 		case 0: //dziecko - odbiera dane z pipa, obsługuje sockety
 		{
-			if (close(pipefd[1]) == -1)
+			//stworzenie i ustawienie budzika do raportów
+			struct sigaction sa;
+			sigemptyset(&sa.sa_mask);
+			sa.sa_flags = 0;
+			sa.sa_handler = handler;
+			if (sigaction(TIMER_SIG, &sa, NULL) == -1)
+			{
+				perror("signal");
+				exit(EXIT_FAILURE);
+			}
+			timer_t timerid;
+			struct sigevent sev;
+			struct itimerspec trigger;
+			sev.sigev_notify = SIGEV_SIGNAL;
+			sev.sigev_signo = TIMER_SIG;
+			trigger.it_value.tv_sec = 5;
+			trigger.it_value.tv_nsec = 0;
+			trigger.it_interval.tv_sec = 5;
+			trigger.it_interval.tv_nsec = 0;
+			if (timer_create(CLOCK_ID, &sev, &timerid) < 0)
+			{
+				perror("timer_create");
+				return -11;
+			}
+
+			if (timer_settime(timerid, 0, &trigger, NULL))
+			{
+				perror("timer");
+				return -12;
+			}
+
+
+			if (close(pipefd[1]) == -1) //zamknięcie końcówki do pisania
 			{
 				perror("close");
 				_exit(EXIT_FAILURE);
@@ -224,8 +276,8 @@ int main(int argc, char* argv[])
 			{
 				adress_final="127.0.0.1";
 			}
-			rejestracja(sock_fd,adress_final,port);
-			//rejestracja(sock_fd,adress_final,port);
+
+			rejestracja(sock_fd,"127.0.0.1",12345);
 			if( listen(sock_fd,5) )
 			{
 				perror("zmiana trybu na pasywny sie zepsula");
@@ -252,11 +304,26 @@ int main(int argc, char* argv[])
 
 			while (1) //pętla główna dziecka
 			{
-				events_count=epoll_wait(fd_epoll, events, MAX_CONN, -1);
-				if (events_count == -1)
+				if (flag==1)
 				{
-					perror("Epol wait error.\n");
-					exit(EXIT_FAILURE);
+					struct timespec t1;
+					clock_gettime(CLOCK_REALTIME, &t1);
+					int change=count_bytes_in_pipe-count_bytes_in_pipe_5s_ago;
+					float percent=((float)count_bytes_in_pipe/(float)max_bytes_in_magazine)*100; //procent zajętych danych
+					fprintf(stderr, "\n------------\nREPORT EVERY 5 SECONDS\n");
+					fprintf(stderr, "Time: %ld:%ld\t\n",t1.tv_sec, t1.tv_nsec);
+					fprintf(stderr, "Count of clients: %d\n",count_connected_clients);
+					fprintf(stderr, "Bytes in pipe: %d B\t%.2f%%\n",count_bytes_in_pipe, percent);
+					fprintf(stderr, "Change every 5 seconds: %d B\n",change );
+					fprintf(stderr, "------------\n\n");
+					count_bytes_in_pipe_5s_ago=count_bytes_in_pipe;
+					//printf("%d\n",count_connected_clients);
+					flag=0;
+				}
+				events_count=epoll_wait(fd_epoll, events, MAX_CONN, -1);
+				if (events_count == -1) //obsługa konkretnego błędu epolla (interrupted system call zjawisko kontrolowane - w związku z budzikiem)
+				{
+					continue;
 				}
 
 				for (int i=0; i<events_count; i++)
@@ -264,6 +331,7 @@ int main(int argc, char* argv[])
 					if (events[i].data.fd==sock_fd)
 					{
 						new_socket = polaczenie(sock_fd);
+						count_connected_clients++;
 						if (new_socket == -1)
 						{
 							perror("New socket error.\n");
@@ -279,10 +347,11 @@ int main(int argc, char* argv[])
 					}
 				}
 
-				int dupa;
-				ioctl(pipefd[0],FIONREAD,&dupa);
-				printf("dupa: %d\n",dupa);
-				WriteOnStdErr(strerror(errno));
+				ioctl(pipefd[0],FIONREAD,&count_bytes_in_pipe); //ściągnięcie informacji ile bajtów jest w pipie
+				if (count_bytes_in_pipe < 13000) //jeśli w pipie jest mniej niż 13KB nie wysyłaj danych
+				{
+					continue;
+				}
 
 				if (read(pipefd[0], buffer_tmp, 3250)==-1) //wczytanie danych z pipe
 				{
@@ -294,10 +363,10 @@ int main(int argc, char* argv[])
 					perror("Write socket");
 					exit(EXIT_FAILURE);
 				}
-				//WriteOnStdErr("buffer_tmp");
 
 				close(new_socket); //zamknięcie socketu po wysłaniu danych
-				//	nanosleep(&t, NULL); // niepotrzebny
+				count_connected_clients--;
+				write_report_after_disconnect(adress_final, port, wasted_bytes);
 			}
 			break;
 		}
