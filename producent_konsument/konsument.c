@@ -22,7 +22,7 @@ void WriteOnStdErr (char* text)
 
 //---------------
 
-void get_args(int* argc, char** argv[], float *p, int *c, float *d, int* subst_p, int* subst_c, int* subst_d, int* port, char** adress_raw)
+void get_args(int* argc, char** argv[], float *p, int *c, float *d, int* subst_p, int* subst_c, int* subst_d, char** adress_raw)
 {
   int opt;
   while ((opt=getopt(*argc, *argv, "p:c:d:")) != -1)
@@ -85,7 +85,7 @@ void check_flags(int p, int c, int d) //procedura sprawdzająca, czy użytkownik
 
 int isDigit(char* str) //funkcja sprawdzająca, czy podany przez użytkownika arg pozycyjny zawiera jedynie port, czy też adres (inne znaki niż liczby)
 {
-  for (int i=0;i<strlen(str)-1;i++)
+  for (int i=0;i<(int)strlen(str)-1;i++)
   {
     if (str[i] >=58 || str[i]<=47)
     {
@@ -146,6 +146,7 @@ int set_consumption_tempo(float p)
 {
   return 4435*p;
 }
+
 //---------------
 
 void degradation_data(int* free, int* used, int degradation_tempo, int capacity)
@@ -161,19 +162,25 @@ void degradation_data(int* free, int* used, int degradation_tempo, int capacity)
 
 //---------------
 
-static void handler(int signal)
+static void handler()
 {
   flag=1;
 }
 
 //---------------
 
-void write_report_on_exit(char* adress_final, int port)
+void write_report_on_exit(char* adress_final, int port, int tab1[], int tab2[] )
 {
-	struct timespec t1;
-	clock_gettime(CLOCK_REALTIME, &t1);
+  struct timespec t1; //Do wzięcia czasu TS
+
+  clock_gettime(CLOCK_REALTIME, &t1);
   pid_t pid = getpid();
-	fprintf(stderr, "Time: %ld:%ld\tPID: %d\t Adress: %s\t Port: %d\t\n",t1.tv_sec, t1.tv_nsec, pid, adress_final, port);
+  fprintf(stderr, "Time: %ld:%ld\tPID: %d\t Adress: %s\t Port: %d\t\n",t1.tv_sec, t1.tv_nsec, pid, adress_final, port);
+  for (int i=0; i<10; i++)
+  {
+    fprintf(stderr, "Pakiet 13KB nr %d: Opóźnienie między połączeniem a odebraniem pierwszej porcji: %d ns\n",i+1, tab1[i] );
+    fprintf(stderr, "Pakiet 13KB nr %d: Opóźnienie między odebraniem pierwszej porcji a zamknięciem połączenia: %d s\n",i+1, tab2[i] );
+  }
 }
 
 //---------------
@@ -185,22 +192,32 @@ int main(int argc, char* argv[])
   float p=0; //zmienne parametrów (flag)
   float d=0;
   int c=0;
-
   int subst_p=0; //zmienne, które definiują, czy flaga wystąpiła
   int subst_d=0;
   int subst_c=0;
-
   int capacity=0; //pojemność magazynu
   int used=0; //ilość użytego miejsca magazynu
   int free=0; //ilość wolnego miejsca magazynu
   int degradation_tempo=0; //tempo degradacji
   int consumpion_tempo=0; //tempo konsumpcji danych
-
+  int count_connections=0; // licznik połączeń
   int port=0; //nr portu
+  int late_recive[10]={0}; //tablica przechowująca opóźnienia mięzy połączeniem, a odebraniem pierwszej porcji produktu
+  int late_closed[10]={0}; //tablica przechowująca opóźnienia między pierwszą porcją, a zamknięciem połączenia
+  int ret=0; //wartość, którą zwróci recv
+  int conn=0; //flaga określająca, czy mamy istniejące połączenie, czy trzeba nawiązać nowe
+  int sock_fd; //file descriptor socketu
+  int R;
   char* adress_raw = (char*)malloc(sizeof(char)*20); //adres wyjściowy, roboczy
   char* adress_final = (char*)malloc(sizeof(char)*16); //adres finalny
 
+  struct timespec t2; //do opóźnień clock monotonic
+  struct timespec t3;
+  struct timespec t4; //do opóźnień clock monotonic
+  struct timespec t5;
+  struct sockaddr_in A;
   struct sigaction sa;
+
   sigemptyset(&sa.sa_mask);
   sa.sa_flags = 0;
   sa.sa_handler = handler;
@@ -211,7 +228,7 @@ int main(int argc, char* argv[])
   }
 
   check_count_args(&argc); //sprawdzenie liczby argumentów
-  get_args(&argc, &argv, &p, &c, &d, &subst_p, &subst_c, &subst_d, &port, &adress_raw); //pobranie argumentów
+  get_args(&argc, &argv, &p, &c, &d, &subst_p, &subst_c, &subst_d, &adress_raw); //pobranie argumentów
   check_flags(subst_p, subst_c, subst_d); //sprawdzenie, czy użytkownik podał flagi -f
   split_data(adress_raw, &adress_final, &port); //podział danych z argumentu pozycyjnego, sprawdzenie czy użytkownik podał IP:port, czy port. Dopasowanie danych do zmiennych
   capacity=set_capacity(c); //ustawienie pojemności magazynu
@@ -245,20 +262,13 @@ int main(int argc, char* argv[])
     return -12;
   }
 
-  int ret=0; //wartość, którą zwróci recv
-  int conn=0; //flaga określająca, czy mamy istniejące połączenie, czy trzeba nawiązać nowe
-  int sock_fd; //file descriptor socketu
-  struct sockaddr_in A;
-  //  short Port = 12345;
-  //  const char * Host = "127.0.0.1";
-  int R;
 
   while (1) //główna pętla programu
   {
     if (free<13000) //zabezpieczenie przed przepełnieniem magazynu
     {
       //WriteOnStdErr("Nie mam miejsca w magazynie, kończę działanie.");
-      write_report_on_exit(adress_final, port);
+      write_report_on_exit(adress_final, port, late_recive, late_closed);
       exit(0);
     }
 
@@ -279,7 +289,7 @@ int main(int argc, char* argv[])
           ret-=consumpion_tempo;
         }
         degradation_data(&free, &used, degradation_tempo, capacity);
-        printf("free: %d\t used: %d\t capacity: %d\n", free, used, capacity);
+        //  printf("free: %d\t used: %d\t capacity: %d\n", free, used, capacity);
       }
       flag=0;
       continue;
@@ -310,17 +320,32 @@ int main(int argc, char* argv[])
       if( connect(sock_fd,(struct sockaddr *)&A,sizeof(A)) != -1 )
       {
         conn=1;
-        fprintf(stderr,"nawiązane połączenie z serwerem %s (port %d)\n",
-        inet_ntoa(A.sin_addr),ntohs(A.sin_port));
+        if (count_connections%4==0)
+        {
+          clock_gettime(CLOCK_MONOTONIC, &t2); //połączenie
+        }
       }
     }
+
     char tmp[3250]; //bufor do otrzymania danych - 4x3250=13000. Najmniejsza ilość paczek, która nie przekracza 4KB, aby przesłać 13KB
     ret = recv(sock_fd,tmp, 3250 ,0); //otrzymanie paczki danych - chcę pobrać 4KB
+    if (count_connections%4==0)
+    {
+      clock_gettime(CLOCK_MONOTONIC, &t3); //po otrzymaniu porcji
+      clock_gettime(CLOCK_MONOTONIC, &t4);
+      late_recive[count_connections/4]=t3.tv_nsec-t2.tv_nsec;
+    }
+    if (count_connections%4==3) //na koniec połączenia
+    {
+      clock_gettime(CLOCK_MONOTONIC, &t5);
+      late_closed[(count_connections-3)/4]=t5.tv_sec-t4.tv_sec;
+    }
+
+    count_connections++;
     if (ret==-1)
     {
       continue;
     }
-    printf("ret: %d\n", ret);
     used+=ret;
     free-=ret;
 
@@ -328,12 +353,10 @@ int main(int argc, char* argv[])
     if (flag==1) //jeśli budzik wysłał sygnał - następuje degradacja danych w tempie zadanym przez parametr
     {
       degradation_data(&free, &used, degradation_tempo, capacity);
-      printf("free: %d\t used: %d\t capacity: %d\n", free, used, capacity);
     }
     flag=0;
   }
   timer_delete(timerid);
-
 
   return 0;
 }
