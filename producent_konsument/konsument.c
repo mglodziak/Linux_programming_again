@@ -17,7 +17,7 @@ int flag=0; //flaga potrzebna do budzika (degradacji danych)
 
 void WriteOnStdErr (char* text)
 {
-fprintf(stderr, "%s\n",text);
+  fprintf(stderr, "%s\n",text);
 }
 
 //---------------
@@ -225,21 +225,16 @@ int main(int argc, char* argv[])
   int conn=0; //flaga określająca, czy mamy istniejące połączenie, czy trzeba nawiązać nowe
   int sock_fd; //file descriptor socketu
   struct sockaddr_in A;
-  short Port = 12345;
-  const char * Host = "127.0.0.1";
+  //  short Port = 12345;
+  //  const char * Host = "127.0.0.1";
   int R;
 
   while (1) //główna pętla programu
   {
-    if (free<5000) //zabezpieczenie przed przepełnieniem magazynu
+    if (free<13000) //zabezpieczenie przed przepełnieniem magazynu
     {
-      if (flag==1) //degradacja danych musi postępować
-      {
-        degradation_data(&free, &used, degradation_tempo, capacity);
-        fprintf(stderr, "free: %d\t used: %d\t capacity: %d\n", free, used, capacity);
-      }
-      flag=0;
-      continue;
+      WriteOnStdErr("Nie mam miejsca w magazynie, kończę działanie.");
+      exit(0);
     }
 
     if (conn==0) //jeśli trzeba pobrać paczkę danych - stworzyć połączenie
@@ -250,13 +245,17 @@ int main(int argc, char* argv[])
         perror("socket sie zepsul...\n");
         exit(1);
       }
+      if (strcmp(adress_final, "localhost")==0)
+      {
+        adress_final="127.0.0.1";
+      }
 
       A.sin_family = AF_INET;
-      A.sin_port = htons(Port);
-      R = inet_aton(Host,&A.sin_addr);
+      A.sin_port = htons(port);
+      R = inet_aton(adress_final,&A.sin_addr);
       if( ! R )
       {
-        fprintf(stderr,"niepoprawny adres: %s\n",Host);
+        fprintf(stderr,"niepoprawny adres: %s\n",adress_final);
         exit(1);
       }
 
@@ -267,8 +266,8 @@ int main(int argc, char* argv[])
         inet_ntoa(A.sin_addr),ntohs(A.sin_port));
       }
     }
-    char tmp[4000];
-    ret = recv(sock_fd,tmp, 4000 ,0); //otrzymanie paczki danych - chcę pobrać 4KB
+    char tmp[3250]; //bufor do otrzymania danych - 4x3250=13000. Najmniejsza ilość paczek, która nie przekracza 4KB, aby przesłać 13KB
+    ret = recv(sock_fd,tmp, 3250 ,0); //otrzymanie paczki danych - chcę pobrać 4KB
     if (ret==-1)
     {
       continue;

@@ -81,8 +81,7 @@ void split_data(char* adress_raw,char** adress_final, int* port) //funcja parsuj
 	int situation = isDigit(adress_raw);
 	if (situation==0)
 	{
-		//	*adress_final="localhost";
-		*adress_final="127.0.0.1"; //był localhost, ale do bindowania potrzeba adresu w formie 'cyfrowej'
+		*adress_final="localhost";
 		*port=strtol(adress_raw,NULL, 10);
 	}
 	if (situation==1)
@@ -177,7 +176,7 @@ int main(int argc, char* argv[])
 	char* adress_raw = (char*)malloc(sizeof(char)*20); //adres roboczy
 	char* adress_final = (char*)malloc(sizeof(char)*16); //adres właściwy
 	char* buffer_prod = (char*)malloc(sizeof(char)*640); //bufor z blokiem danych
-	char* buffer_tmp = (char*)malloc(sizeof(char)*4000); //bufor służący do wysłania paczki 4KB
+	char* buffer_tmp = (char*)malloc(sizeof(char)*3250); //bufor służący do wysłania paczki 3250B 4*3250=13000
 	struct timespec t={1,0}; //struktura dla nanosleepa
 	struct epoll_event ep_ev; //struktura dla epolla
 	struct epoll_event events[MAX_CONN]; //tablica struktur dla epolla
@@ -220,8 +219,11 @@ int main(int argc, char* argv[])
 				perror("creating socket");
 				exit(1);
 			}
-
-			rejestracja(sock_fd,"127.0.0.1",12345);
+			if (strcmp(adress_final, "localhost")==0)
+			{
+				adress_final="127.0.0.1";
+			}
+			rejestracja(sock_fd,adress_final,port);
 			//rejestracja(sock_fd,adress_final,port);
 			if( listen(sock_fd,5) )
 			{
@@ -276,7 +278,7 @@ int main(int argc, char* argv[])
 					}
 				}
 
-				if (read(pipefd[0], buffer_tmp, 4000)==-1) //wczytanie danych z pipe
+				if (read(pipefd[0], buffer_tmp, 3250)==-1) //wczytanie danych z pipe
 				{
 					WriteOnStdErr(strerror(errno));
 				}
@@ -289,7 +291,7 @@ int main(int argc, char* argv[])
 			//WriteOnStdErr("buffer_tmp");
 
 				close(new_socket); //zamknięcie socketu po wysłaniu danych
-				nanosleep(&t, NULL); // niepotrzebny
+			//	nanosleep(&t, NULL); // niepotrzebny
 			}
 			break;
 		}
